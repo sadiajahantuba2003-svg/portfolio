@@ -152,30 +152,66 @@
     observeReveals(grid);
   }
 
+  const LOCAL_GALLERY = [
+    '1.jpeg','2.jpeg','3.jpeg','4.jpeg','5.jpeg','6.jpeg','7.jpeg','8.jpeg','9.jpeg','10.jpeg','11.jpeg','12.jpeg','13.jpeg','14.jpeg','15.jpeg','16.jpeg','17.jpeg','18.jpeg','19.jpeg','20.jpeg'
+  ];
+  const LOCAL_CERTIFICATES = [
+    'certificate-1.jpeg','Certificate-2.jpeg','Certificate-3.jpeg','Certificate-4.jpeg','Certificate-5.jpeg','Certificate-6.jpeg','certificate-7.jpeg','certificate-8.jpeg','certificate-9.jpeg','Certificate-10.jpeg','Certificate-11.jpeg','certificate-12.jpeg','Certificate-13.jpeg','Certificate-14.jpeg','Certificate-15.jpeg','Certificate-16.jpeg','Certificate-17.jpeg','certificate-18.jpeg','Certificate-19.jpeg','Certificate-20.jpeg'
+  ];
+
+  const localFiles = (names, folder) =>
+    names.map(name => ({name, download_url: `${folder}/${encodeURIComponent(name)}`}));
+
   async function loadDynamicMedia() {
-    const gallery = document.getElementById('galleryGrid');
-    const certificates = document.getElementById('certificateGrid');
+    const galleryLocal = localFiles(LOCAL_GALLERY, 'assets/gallery');
+    const certificateLocal = localFiles(LOCAL_CERTIFICATES, 'assets/certificates');
+
+    // Render the bundled files immediately. This keeps the site fully usable
+    // offline and avoids waiting for the GitHub API before images appear.
+    renderGallery(galleryLocal);
+    renderCertificates(certificateLocal);
+
+    // If hosted from the configured public repository, discover any NEW
+    // images and append only files that are not already bundled locally.
     try {
       const [galleryFiles, certificateFiles] = await Promise.all([
         listGitHubImages('assets/gallery'),
         listGitHubImages('assets/certificates')
       ]);
-      renderGallery(galleryFiles);
-      renderCertificates(certificateFiles);
+
+      const appendNew = (gridId, existingNames, files, folder) => {
+        const grid = document.getElementById(gridId);
+        if (!grid) return;
+        const seen = new Set(existingNames.map(n => n.toLowerCase()));
+        const extras = files.filter(file => !seen.has(file.name.toLowerCase()));
+        extras.forEach(file => {
+          const figure = document.createElement('figure');
+          figure.className = 'reveal';
+          figure.dataset.stagger = '';
+          const img = document.createElement('img');
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          img.src = file.download_url || `${folder}/${encodeURIComponent(file.name)}`;
+          img.alt = `${gridId === 'galleryGrid' ? 'Gallery' : 'Certificate'} — ${prettyName(file.name)}`;
+          figure.appendChild(img);
+          grid.appendChild(figure);
+        });
+        if (extras.length) {
+          prepareStagger(grid);
+          observeReveals(grid);
+        }
+      };
+
+      appendNew('galleryGrid', LOCAL_GALLERY, galleryFiles, 'assets/gallery');
+      appendNew('certificateGrid', LOCAL_CERTIFICATES, certificateFiles, 'assets/certificates');
     } catch (error) {
-      // Offline/local fallback: the loading placeholders are replaced by the
-      // existing assets via a small deterministic scan of known current files.
-      const galleryFallback = Array.from({length: 20}, (_,i) => ({name:`${i+1}.jpeg`, download_url:`assets/gallery/${i+1}.jpeg`}));
-      const certFallback = Array.from({length: 20}, (_,i) => ({name:`certificate-${i+1}.jpeg`, download_url:`assets/certificates/certificate-${i+1}.jpeg`}));
-      renderGallery(galleryFallback);
-      renderCertificates(certFallback);
-      console.info('Dynamic media discovery unavailable; using local fallback.', error);
+      console.info('Remote media discovery unavailable; bundled media is already loaded.', error);
     }
-    // Ensure newly rendered content is decoded smoothly.
+
     document.querySelectorAll('#galleryGrid img, #certificateGrid img').forEach(img => {
+      if (img.complete) img.classList.add('loaded');
       img.addEventListener('load', () => img.classList.add('loaded'), {once: true});
     });
-    // Give the browser a chance to recalculate scroll progress after injection.
     requestAnimationFrame(updateScrollUI);
   }
   loadDynamicMedia();
