@@ -87,136 +87,83 @@
   parallax();
 
   // -------------------------------------------------------------------------
-  // Automatic Gallery / Certificate discovery
+  // Optional remote media discovery
   //
-  // GitHub Pages cannot list a folder directly. When this site is hosted from
-  // the public repository below, the GitHub Contents API is used so simply
-  // uploading another image into assets/gallery or assets/certificates makes
-  // it appear automatically on the next page load. Existing HTML is only a
-  // fallback for offline/local viewing.
+  // The bundled gallery/certificate images are rendered directly in HTML so
+  // search engines and no-JS visitors can discover them immediately. The
+  // GitHub API is only used later to append newly uploaded images.
   // -------------------------------------------------------------------------
   const MEDIA_REPO = {
     owner: 'sadiajahantuba2003-svg',
     repo: 'portfolio',
     branch: 'main'
   };
-  const IMAGE_EXT = /\.(avif|gif|jpe?g|png|webp|svg)$/i;
+  const IMAGE_EXT = /\\.(avif|gif|jpe?g|png|webp|svg)$/i;
   const naturalSort = (a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'});
-  const prettyName = filename => filename.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\b\w/g, m => m.toUpperCase());
+  const prettyName = filename => filename.replace(/\\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\\b\\w/g, m => m.toUpperCase());
 
   async function listGitHubImages(folder) {
     const url = `https://api.github.com/repos/${encodeURIComponent(MEDIA_REPO.owner)}/${encodeURIComponent(MEDIA_REPO.repo)}/contents/${folder}?ref=${encodeURIComponent(MEDIA_REPO.branch)}`;
-    const response = await fetch(url, {headers: {'Accept': 'application/vnd.github+json'}, cache: 'no-store'});
+    const response = await fetch(url, {
+      headers: {'Accept': 'application/vnd.github+json'},
+      cache: 'force-cache'
+    });
     if (!response.ok) throw new Error(`GitHub API ${response.status}`);
     const files = await response.json();
-    return files.filter(file => file.type === 'file' && IMAGE_EXT.test(file.name)).sort((a,b) => naturalSort(a.name,b.name));
+    return files.filter(file => file.type === 'file' && IMAGE_EXT.test(file.name))
+      .sort((a,b) => naturalSort(a.name,b.name));
   }
 
-  function renderGallery(files) {
-    const grid = document.getElementById('galleryGrid');
-    if (!grid || !files?.length) return;
-    grid.innerHTML = '';
-    files.forEach((file, i) => {
-      const figure = document.createElement('figure');
-      figure.className = `${i % 4 === 3 ? 'large ' : ''}reveal`;
-      figure.dataset.stagger = '';
-      const img = document.createElement('img');
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      img.src = file.download_url || `assets/gallery/${encodeURIComponent(file.name)}`;
-      img.alt = `Gallery — ${prettyName(file.name)}`;
-      figure.appendChild(img);
-      grid.appendChild(figure);
-    });
-    prepareStagger(grid);
-    observeReveals(grid);
-  }
+  function appendNewMedia(gridId, files, type) {
+    const grid = document.getElementById(gridId);
+    if (!grid) return;
 
-  function renderCertificates(files) {
-    const grid = document.getElementById('certificateGrid');
-    if (!grid || !files?.length) return;
-    grid.innerHTML = '';
-    files.forEach((file, i) => {
+    const mediaKey = name => name.replace(/\\.[^.]+$/, '').toLowerCase();
+    const seen = new Set([...grid.querySelectorAll('[data-media-name]')]
+      .map(el => mediaKey(el.dataset.mediaName)));
+
+    files.filter(file => !seen.has(mediaKey(file.name))).forEach(file => {
       const figure = document.createElement('figure');
       figure.className = 'reveal';
       figure.dataset.stagger = '';
+      figure.dataset.mediaName = file.name;
+
       const img = document.createElement('img');
       img.loading = 'lazy';
       img.decoding = 'async';
-      img.src = file.download_url || `assets/certificates/${encodeURIComponent(file.name)}`;
-      img.alt = `Certificate — ${prettyName(file.name)}`;
+      img.src = file.download_url || `assets/${type}/${encodeURIComponent(file.name)}`;
+      img.alt = type === 'gallery'
+        ? `Sadia Jahan Tuba — gallery photograph`
+        : `Certificate featuring Sadia Jahan Tuba`;
+
       figure.appendChild(img);
       grid.appendChild(figure);
     });
+
     prepareStagger(grid);
     observeReveals(grid);
   }
 
-  const LOCAL_GALLERY = [
-    '1.jpeg','2.jpeg','3.jpeg','4.jpeg','5.jpeg','6.jpeg','7.jpeg','8.jpeg','9.jpeg','10.jpeg','11.jpeg','12.jpeg','13.jpeg','14.jpeg','15.jpeg','16.jpeg','17.jpeg','18.jpeg','19.jpeg','20.jpeg'
-  ];
-  const LOCAL_CERTIFICATES = [
-    'certificate-1.jpeg','Certificate-2.jpeg','Certificate-3.jpeg','Certificate-4.jpeg','Certificate-5.jpeg','Certificate-6.jpeg','certificate-7.jpeg','certificate-8.jpeg','certificate-9.jpeg','Certificate-10.jpeg','Certificate-11.jpeg','certificate-12.jpeg','Certificate-13.jpeg','Certificate-14.jpeg','Certificate-15.jpeg','Certificate-16.jpeg','Certificate-17.jpeg','certificate-18.jpeg','Certificate-19.jpeg','Certificate-20.jpeg'
-  ];
-
-  const localFiles = (names, folder) =>
-    names.map(name => ({name, download_url: `${folder}/${encodeURIComponent(name)}`}));
-
-  async function loadDynamicMedia() {
-    const galleryLocal = localFiles(LOCAL_GALLERY, 'assets/gallery');
-    const certificateLocal = localFiles(LOCAL_CERTIFICATES, 'assets/certificates');
-
-    // Render the bundled files immediately. This keeps the site fully usable
-    // offline and avoids waiting for the GitHub API before images appear.
-    renderGallery(galleryLocal);
-    renderCertificates(certificateLocal);
-
-    // If hosted from the configured public repository, discover any NEW
-    // images and append only files that are not already bundled locally.
+  async function discoverRemoteMedia() {
     try {
       const [galleryFiles, certificateFiles] = await Promise.all([
         listGitHubImages('assets/gallery'),
         listGitHubImages('assets/certificates')
       ]);
-
-      const appendNew = (gridId, existingNames, files, folder) => {
-        const grid = document.getElementById(gridId);
-        if (!grid) return;
-        const seen = new Set(existingNames.map(n => n.toLowerCase()));
-        const extras = files.filter(file => !seen.has(file.name.toLowerCase()));
-        extras.forEach(file => {
-          const figure = document.createElement('figure');
-          figure.className = 'reveal';
-          figure.dataset.stagger = '';
-          const img = document.createElement('img');
-          img.loading = 'lazy';
-          img.decoding = 'async';
-          img.src = file.download_url || `${folder}/${encodeURIComponent(file.name)}`;
-          img.alt = `${gridId === 'galleryGrid' ? 'Gallery' : 'Certificate'} — ${prettyName(file.name)}`;
-          figure.appendChild(img);
-          grid.appendChild(figure);
-        });
-        if (extras.length) {
-          prepareStagger(grid);
-          observeReveals(grid);
-        }
-      };
-
-      appendNew('galleryGrid', LOCAL_GALLERY, galleryFiles, 'assets/gallery');
-      appendNew('certificateGrid', LOCAL_CERTIFICATES, certificateFiles, 'assets/certificates');
+      appendNewMedia('galleryGrid', galleryFiles, 'gallery');
+      appendNewMedia('certificateGrid', certificateFiles, 'certificates');
     } catch (error) {
+      // Local bundled media remains fully functional if the API is unavailable.
       console.info('Remote media discovery unavailable; bundled media is already loaded.', error);
     }
-
-    document.querySelectorAll('#galleryGrid img, #certificateGrid img').forEach(img => {
-      if (img.complete) img.classList.add('loaded');
-      img.addEventListener('load', () => img.classList.add('loaded'), {once: true});
-    });
     requestAnimationFrame(updateScrollUI);
   }
-  loadDynamicMedia();
 
-
+  // Defer the optional GitHub API work until after the first page render.
+  const scheduleIdle = window.requestIdleCallback
+    ? cb => window.requestIdleCallback(cb, {timeout: 3000})
+    : cb => window.setTimeout(cb, 1800);
+  window.addEventListener('load', () => scheduleIdle(discoverRemoteMedia), {once: true});
 
   // Premium pointer light + subtle magnetic interactions on desktop.
   const glow = document.querySelector('.pointer-glow');

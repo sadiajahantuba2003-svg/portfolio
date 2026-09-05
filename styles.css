@@ -454,3 +454,13 @@ footer:before{content:"";position:absolute;left:50%;top:0;width:45vw;height:1px;
 .pointer-glow{position:fixed;left:-120px;top:-120px;width:240px;height:240px;border-radius:50%;pointer-events:none;z-index:9997;background:radial-gradient(circle,rgba(229,197,109,.10),rgba(140,124,255,.035) 28%,transparent 68%);transform:translate3d(-120px,-120px,0);mix-blend-mode:screen;filter:blur(8px);transition:opacity .25s ease}
 @media(pointer:coarse){.pointer-glow{display:none}}
 @media(prefers-reduced-motion:reduce){.pointer-glow{display:none}}
+
+
+/* SEO/performance/accessibility hardening */
+img{max-width:100%}
+a,button{touch-action:manipulation}
+button{font:inherit}
+:where(a,button):focus-visible{outline:2px solid var(--gold2);outline-offset:4px}
+@media (prefers-reduced-motion: reduce){
+  .hero-visual>img{transform:none!important}
+}
